@@ -57,6 +57,8 @@ from .embedding import get_embeddings
 from ._trim_to_layer import trim_to_layer
 from .ppr import get_ppr
 from ._train_test_split_edges import train_test_split_edges
+from .mesh_features import (mesh_extract_features, set_edge_lengths, dihedral_angle, symmetric_opposite_angles,
+                            get_normals, get_opposite_angles, symmetric_ratios, get_ratios)
 
 __all__ = [
     'scatter',
@@ -148,6 +150,14 @@ __all__ = [
     'trim_to_layer',
     'get_ppr',
     'train_test_split_edges',
+    'mesh_extract_features',
+    'set_edge_lengths',
+    'dihedral_angle',
+    'symmetric_opposite_angles',
+    'get_normals',
+    'get_opposite_angles',
+    'symmetric_ratios',
+    'get_ratios',
 ]
 
 # `structured_negative_sampling_feasible` is a long name and thus destroys the

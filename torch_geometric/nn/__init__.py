@@ -16,6 +16,7 @@ from .unpool import *  # noqa
 from .dense import *  # noqa
 from .kge import *  # noqa
 from .models import *  # noqa
+from .mesh import *  # noqa
 from .functional import *  # noqa
 
 __all__ = [

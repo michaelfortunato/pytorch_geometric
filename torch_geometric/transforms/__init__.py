@@ -62,6 +62,12 @@ from .generate_mesh_normals import GenerateMeshNormals
 from .delaunay import Delaunay
 from .to_superpixels import ToSLIC
 from .grid_sampling import GridSampling
+from .gcn_norm import GCNNorm
+from .mesh_prepare import MeshCNNPrepare
+from .svd_feature_reduction import SVDFeatureReduction
+from .remove_training_classes import RemoveTrainingClasses
+from .random_node_split import RandomNodeSplit
+from .random_link_split import RandomLinkSplit
 
 general_transforms = [
     'BaseTransform',
@@ -135,6 +141,12 @@ vision_transforms = [
     'Delaunay',
     'ToSLIC',
     'GridSampling',
+    'GCNNorm',
+    'MeshCNNPrepare',
+    'SVDFeatureReduction',
+    'RemoveTrainingClasses',
+    'RandomNodeSplit',
+    'RandomLinkSplit',
 ]
 
 __all__ = general_transforms + graph_transforms + vision_transforms

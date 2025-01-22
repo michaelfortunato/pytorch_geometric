@@ -20,6 +20,7 @@ from .cluster_pool import ClusterPooling
 from .asap import ASAPooling
 from .pan_pool import PANPooling
 from .mem_pool import MemPooling
+from .mesh_pool import MeshPool
 from .voxel_grid import voxel_grid
 from .approx_knn import approx_knn, approx_knn_graph
 
@@ -365,6 +366,7 @@ __all__ = [
     'radius',
     'radius_graph',
     'nearest',
+    'MeshPool',
 ]
 
 classes = __all__

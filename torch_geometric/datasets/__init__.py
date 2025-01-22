@@ -52,6 +52,7 @@ from .webkb import WebKB
 from .wikipedia_network import WikipediaNetwork
 from .heterophilous_graph_dataset import HeterophilousGraphDataset
 from .actor import Actor
+from .mesh_cnn_datasets import MeshShrech16Dataset, MeshCubesDataset, MeshHumanSegDataset, MeshCoSegDataset
 from .upfd import UPFD
 from .github import GitHub
 from .facebook import FacebookPagePage
@@ -196,6 +197,10 @@ homo_datasets = [
     'GitMolDataset',
     'MoleculeGPTDataset',
     'TAGDataset',
+    'MeshShrech16Dataset',
+    'MeshCubesDataset',
+    'MeshHumanSegDataset',
+    'MeshCoSegDataset',
 ]
 
 hetero_datasets = [
