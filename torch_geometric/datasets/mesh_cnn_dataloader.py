@@ -51,8 +51,9 @@ class MeshDataLoader:
         self.shuffle = shuffle
         self.n_classes = self.dataset.n_classes
         self.n_input_channels = self.dataset.n_input_channels
+        # FIXME: How can we support multiple GPUs?
         self.device = torch.device(
-            'cuda:{}'.format(gpu_ids[0])) if gpu_ids else torch.device('cpu')
+            'cuda:{}'.format(gpu_ids[0])) if len(gpu_ids)>0 else torch.device('cpu')
         self.data_loader = DataListLoader(dataset=self.dataset,
                                           batch_size=self.batch_size,
                                           shuffle=shuffle)

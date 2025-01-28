@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import os
 import ntpath
-from .mesh_augmentations import (scale_verts, flip_edges, slide_verts)
+from .mesh_augmentations import scale_verts, flip_edges, slide_verts
 from ..utils.mesh_features import mesh_extract_features
 from ..data.meshcnnhandler import MeshCNNData
 from torch_geometric.io import read_ply
@@ -29,11 +29,13 @@ class MeshCNNPrepare:
                                  Default is 1.
     """
 
-    def __init__(self, aug_slide_verts: float = 0.0,
-                 aug_scale_verts: bool = False,
-                 aug_flip_edges: float = 0.0,
-                 num_aug: int = 1):
-
+    def __init__(
+        self,
+        aug_slide_verts: float = 0.0,
+        aug_scale_verts: bool = False,
+        aug_flip_edges: float = 0.0,
+        num_aug: int = 1,
+    ):
         self.aug_slide_verts = aug_slide_verts
         self.aug_scale_verts = aug_scale_verts
         self.aug_flip_edges = aug_flip_edges
@@ -56,45 +58,76 @@ class MeshCNNPrepare:
             MeshCNNData structure.
 
         """
+        # MNF FIXME: This pr addressese this issue
+        # but not efficiently. See here https://github.com/ranahanocka/MeshCNN/pull/152/files
+        # breakpoint()
         self.mesh_data = MeshCNNData()
+        print(load_path)
         if os.path.exists(load_path):
-            loaded_data = np.load(load_path, encoding='latin1',
-                                  allow_pickle=True)
+            # MNF loaded_data = np.load(load_path, encoding='latin1',
+            #                       allow_pickle=True)
+            with open(load_path, 'rb') as f:
+                import pickle
+
+                loaded_data = pickle.load(f)
             self.mesh_data.pos = torch.tensor(loaded_data['pos'])
             self.mesh_data.edges = torch.tensor(loaded_data['edges'])
             self.mesh_data.edges_count = int(loaded_data['edges_count'])
-            self.mesh_data.ve = loaded_data['ve'].tolist()
+            self.mesh_data.ve = loaded_data['ve']
             self.mesh_data.v_mask = torch.tensor(loaded_data['v_mask'])
             self.mesh_data.filename = str(loaded_data['filename'])
             self.mesh_data.edge_lengths = loaded_data['edge_lengths']
             self.mesh_data.edge_areas = torch.tensor(loaded_data['edge_areas'])
             self.mesh_data.edge_attr = torch.tensor(loaded_data['edge_attr'])
             self.mesh_data.sides = torch.tensor(loaded_data['sides'])
-            self.mesh_data.edge_index = torch.tensor(loaded_data['edge_index'],
-                                                     dtype=torch.long)
+            self.mesh_data.edge_index = torch.tensor(
+                loaded_data['edge_index'], dtype=torch.long
+            )
         else:
             self.mesh_data = self.from_scratch(data)
             if load_path is not '':
-                np.savez_compressed(load_path, pos=self.mesh_data.pos,
-                                    edges=self.mesh_data.edges,
-                                    edges_count=int(
-                                        self.mesh_data.edges_count),
-                                    ve=self.mesh_data.ve,
-                                    v_mask=self.mesh_data.v_mask,
-                                    filename=str(self.mesh_data.filename),
-                                    sides=self.mesh_data.sides,
-                                    edge_lengths=self.mesh_data.edge_lengths,
-                                    edge_areas=self.mesh_data.edge_areas,
-                                    edge_attr=self.mesh_data.edge_attr,
-                                    edge_index=self.mesh_data.edge_index)
+                # breakpoint()
+                # MNF TODO: Swap out ve implementation
+                # to enable .npz format cache files
+                dict_save = {}
+                dict_save['pos'] = self.mesh_data.pos
+                dict_save['edges'] = self.mesh_data.edges
+                dict_save['edges_count'] = self.mesh_data.edges_count
+                dict_save['ve'] = self.mesh_data.ve
+                dict_save['v_mask'] = self.mesh_data.v_mask
+                dict_save['filename'] = self.mesh_data.filename
+                dict_save['edge_lengths'] = self.mesh_data.edge_lengths
+                dict_save['edge_areas'] = self.mesh_data.edge_areas
+                dict_save['edge_attr'] = self.mesh_data.edge_attr
+                dict_save['sides'] = self.mesh_data.sides
+                dict_save['edge_index'] = self.mesh_data.edge_index
+                with open(load_path, 'wb') as f:
+                    import pickle
+
+                    pickle.dump(dict_save, f)
+                # MNF np.savez_compressed(load_path, pos=self.mesh_data.pos,
+                #                     edges=self.mesh_data.edges,
+                #                     edges_count=int(
+                #                         self.mesh_data.edges_count),
+                #                     ve=self.mesh_data.ve,
+                #                     v_mask=self.mesh_data.v_mask,
+                #                     filename=str(self.mesh_data.filename),
+                #                     sides=self.mesh_data.sides,
+                #                     edge_lengths=self.mesh_data.edge_lengths,
+                #                     edge_areas=self.mesh_data.edge_areas,
+                #                     edge_attr=self.mesh_data.edge_attr,
+                #                     edge_index=self.mesh_data.edge_index)
 
         return self.mesh_data
 
     def from_scratch(self, data):
-        keys = data.keys
-        assert (('pos' in keys and 'face' in keys)
-                or
-                ('pos' in keys and 'faces' in keys))
+        # MNF FIXED: .keys should be .keys()
+        # breakpoint()
+        keys = data.keys()
+        # MNF WARN: This code, without an error message is dangerous
+        assert ('pos' in keys and 'face' in keys) or (
+            'pos' in keys and 'faces' in keys
+        )
 
         mesh_data = MeshCNNData()
         if 'face' in keys:
@@ -108,6 +141,10 @@ class MeshCNNPrepare:
 
         mesh_data.v_mask = torch.ones(len(mesh_data.pos), dtype=bool)
 
+        # MNF FIXME: This is critical, the virtual edge computation
+        # stores an inefficient datastructure that is not aligned
+        # Namely self.ve
+        # See  my comment in __call__)
         faces, face_areas = self.remove_non_manifolds(mesh_data, faces)
         faces = self.mesh_augmentations(mesh_data, faces)
         self.build_edge_indexes(mesh_data, faces, face_areas)
@@ -124,9 +161,14 @@ class MeshCNNPrepare:
 
     def mesh_post_augmentations(self, mesh):
         if self.aug_slide_verts > 0.0:
-            mesh.shifted = slide_verts(mesh.edges, mesh.edge_index,
-                                       mesh.edges_count,
-                                       mesh.ve, mesh.pos, self.aug_slide_verts)
+            mesh.shifted = slide_verts(
+                mesh.edges,
+                mesh.edge_index,
+                mesh.edges_count,
+                mesh.ve,
+                mesh.pos,
+                self.aug_slide_verts,
+            )
 
     def fill_from_file(self, mesh):
         mesh.filename = ntpath.split(self.file)[1]
@@ -148,12 +190,14 @@ class MeshCNNPrepare:
                 elif splitted_line[0] == 'v':
                     pos.append([float(v) for v in splitted_line[1:4]])
                 elif splitted_line[0] == 'f':
-                    face_vertex_ids = [int(c.split('/')[0]) for c in
-                                       splitted_line[1:]]
+                    face_vertex_ids = [
+                        int(c.split('/')[0]) for c in splitted_line[1:]
+                    ]
                     assert len(face_vertex_ids) == 3
                     face_vertex_ids = [
                         (ind - 1) if (ind >= 0) else (len(pos) + ind)
-                        for ind in face_vertex_ids]
+                        for ind in face_vertex_ids
+                    ]
                     faces.append(face_vertex_ids)
             f.close()
             pos = np.array(pos, dtype=float)
@@ -165,9 +209,11 @@ class MeshCNNPrepare:
         mesh.ve = [[] for _ in mesh.pos]
         edges_set = set()
         mask = torch.ones(len(faces), dtype=bool)
-        _, face_areas = self.compute_face_normals_and_areas(mesh=mesh,
-                                                            faces=faces)
+        _, face_areas = self.compute_face_normals_and_areas(
+            mesh=mesh, faces=faces
+        )
         for face_id, face in enumerate(faces):
+            breakpoint()
             if face_areas[face_id] == 0:
                 mask[face_id] = False
                 continue
@@ -192,11 +238,11 @@ class MeshCNNPrepare:
         num_edge_pairs = edge_nb.shape[0] * (edge_nb.shape[1] + 1)
         edge_index = np.zeros([2, num_edge_pairs], dtype=np.int64)
         edge_index[0, :] = np.concatenate(
-            (np.expand_dims(np.arange(edges_count), axis=1),
-             edge_nb), axis=1).flatten()
-        edge_index[1, :] = (
-                np.linspace(0, num_edge_pairs - 1, num_edge_pairs) // (
-                edge_nb.shape[1] + 1))
+            (np.expand_dims(np.arange(edges_count), axis=1), edge_nb), axis=1
+        ).flatten()
+        edge_index[1, :] = np.linspace(
+            0, num_edge_pairs - 1, num_edge_pairs
+        ) // (edge_nb.shape[1] + 1)
         return edge_index
 
     def build_edge_indexes(self, mesh, faces, face_areas):
@@ -237,35 +283,42 @@ class MeshCNNPrepare:
             for idx, edge in enumerate(faces_edges):
                 edge_key = edge2key[edge]
                 edge_nb[edge_key][nb_count[edge_key]] = edge2key[
-                    faces_edges[(idx + 1) % 3]]
+                    faces_edges[(idx + 1) % 3]
+                ]
                 edge_nb[edge_key][nb_count[edge_key] + 1] = edge2key[
-                    faces_edges[(idx + 2) % 3]]
+                    faces_edges[(idx + 2) % 3]
+                ]
                 nb_count[edge_key] += 2
             for idx, edge in enumerate(faces_edges):
                 edge_key = edge2key[edge]
-                sides[edge_key][nb_count[edge_key] - 2] = nb_count[edge2key[
-                    faces_edges[(idx + 1) % 3]]] - 1
-                sides[edge_key][nb_count[edge_key] - 1] = nb_count[edge2key[
-                    faces_edges[(idx + 2) % 3]]] - 2
+                sides[edge_key][nb_count[edge_key] - 2] = (
+                    nb_count[edge2key[faces_edges[(idx + 1) % 3]]] - 1
+                )
+                sides[edge_key][nb_count[edge_key] - 1] = (
+                    nb_count[edge2key[faces_edges[(idx + 2) % 3]]] - 2
+                )
 
         mesh.edges = torch.tensor(edges, dtype=torch.int32)
         edge_nb = torch.tensor(edge_nb, dtype=torch.int64)
         mesh.edge_index = torch.tensor(
-            self.build_edge_pairs(edge_nb, edges_count), dtype=torch.long)
+            self.build_edge_pairs(edge_nb, edges_count), dtype=torch.long
+        )
         mesh.sides = torch.tensor(sides, dtype=torch.int64)
         mesh.edges_count = edges_count
-        mesh.edge_areas = torch.tensor(mesh.edge_areas,
-                                       dtype=torch.float32) / np.sum(
-            face_areas)
+        mesh.edge_areas = torch.tensor(
+            mesh.edge_areas, dtype=torch.float32
+        ) / np.sum(face_areas)
 
     @staticmethod
     def compute_face_normals_and_areas(mesh, faces):
-        face_normals = np.cross(mesh.pos[faces[:, 1]] - mesh.pos[faces[:, 0]],
-                                mesh.pos[faces[:, 2]] - mesh.pos[faces[:, 1]])
-        face_areas = np.sqrt((face_normals ** 2).sum(axis=1))
+        face_normals = np.cross(
+            mesh.pos[faces[:, 1]] - mesh.pos[faces[:, 0]],
+            mesh.pos[faces[:, 2]] - mesh.pos[faces[:, 1]],
+        )
+        face_areas = np.sqrt((face_normals**2).sum(axis=1))
         face_normals /= face_areas[:, np.newaxis]
-        assert (not np.any(face_areas[:,
-                           np.newaxis] == 0)), 'has zero area face: %s' \
-                                               % mesh.filename
+        assert not np.any(face_areas[:, np.newaxis] == 0), (
+            'has zero area face: %s' % mesh.filename
+        )
         face_areas *= 0.5
         return face_normals, face_areas

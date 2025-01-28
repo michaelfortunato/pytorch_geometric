@@ -44,7 +44,6 @@ class MeshCnnBaseDataset(InMemoryDataset):
         self.n_classes = None
         super(MeshCnnBaseDataset, self).__init__(self.root)
 
-    @property
     def download(self):
         pass
 
@@ -111,7 +110,14 @@ class MeshCnnBaseDataset(InMemoryDataset):
             num_aug = self.num_aug
             self.num_aug = 1
             mean, std = np.array(0), np.array(0)
-            for j, mesh_data in enumerate(self):
+            # MNF FIXME: for j, mesh_data in enumerate(self):
+            # This does not work. Now what we 
+            # can do is use the public len() and get() methods
+            # on InMemoryDataset. It feels like we should not 
+            # be doing this howerver, and that there might exist a 
+            # api for calculating the mean and standard deviation. 
+            for j in range(self.len()):
+                mesh_data = self.get(j)
                 if j % 500 == 0:
                     print('{} of {}'.format(j, self.size))
                 features = mesh_data['edge_attr']
@@ -224,9 +230,14 @@ class MeshCnnClassificationDataset(MeshCnnBaseDataset):
         return meshes
 
     def process(self):
-        self.dir = self.raw_dir + '\\' + \
-                   [d for d in os.listdir(self.raw_dir) if
-                    osp.isdir(osp.join(self.raw_dir, d))][0]
+        # MNF FIXME: Commented out the original and have a question and comment
+        # 1. - Get the first directory listed by the os?
+        # Comment -  `\\` is not a posix path - Breaks on posix machine.
+        # self.dir = self.raw_dir + '\\' + \
+        #            [d for d in os.listdir(self.raw_dir) if
+        #             osp.isdir(osp.join(self.raw_dir, d))][0]
+        # MNF TODO:  See if shrec2016.py does the job for the SHREC dataset
+        self.dir = self.raw_dir + '/shrec_16'
         self.classes, self.class_to_idx = self.find_classes(self.dir)
         self.paths_labels = self.make_dataset_by_class(self.dir,
                                                        self.class_to_idx,
@@ -234,6 +245,7 @@ class MeshCnnClassificationDataset(MeshCnnBaseDataset):
         self.n_classes = len(self.classes)
         self.size = len(self.paths_labels)
         self.get_mean_std()
+
 
         # Process all files - run augmentations and save for future use
         for path_label in self.paths_labels:
@@ -244,7 +256,7 @@ class MeshCnnClassificationDataset(MeshCnnBaseDataset):
                 prefix = osp.basename(filename)
                 load_dir = osp.join(dir_name, 'cache')
                 load_file = osp.join(load_dir,
-                                     '%s_%03d.npz' % (prefix, num_aug))
+                                     '%s_%03d.pkl' % (prefix, num_aug))
                 if not osp.isdir(load_dir):
                     os.makedirs(load_dir, exist_ok=True)
                 if osp.exists(load_file):
@@ -252,6 +264,7 @@ class MeshCnnClassificationDataset(MeshCnnBaseDataset):
                 else:
                     data = self.get_data_from_file(path)
                     self.mesh_prepare_transform(data, load_file)
+        print("tingliao lika bing liao")
 
     def len(self):
         return len(self.paths_labels)
@@ -265,8 +278,10 @@ class MeshCnnClassificationDataset(MeshCnnBaseDataset):
         load_dir = osp.join(dir_name, 'cache')
         if not osp.isdir(load_dir):
             os.makedirs(load_dir, exist_ok=True)
+        # MNF FIXME: See my comment in transforms/mesh_prepare.py for the issues
+        # with npz https://github.com/ranahanocka/MeshCNN/pull/152/files 
         load_file = osp.join(load_dir,
-                             '%s_%03d.npz' % (
+                             '%s_%03d.pkl' % (
                                  prefix, np.random.randint(0, self.num_aug)))
 
         data = self.get_data_from_file(path)
@@ -420,7 +435,7 @@ class MeshCnnSegmentationDataset(MeshCnnBaseDataset):
                 prefix = osp.basename(filename)
                 load_dir = osp.join(dir_name, 'cache')
                 load_file = osp.join(load_dir,
-                                     '%s_%03d.npz' % (prefix, num_aug))
+                                     '%s_%03d.pkl' % (prefix, num_aug))
                 if not osp.isdir(load_dir):
                     os.makedirs(load_dir, exist_ok=True)
                 if osp.exists(load_file):

@@ -70,7 +70,7 @@ class MeshPool(nn.Module):
         queue = MeshPool.__build_queue(
             self.__fe[mesh_index, :, :mesh.mesh_data.edges_count],
             mesh.mesh_data.edges_count)
-        mask = np.ones(mesh.mesh_data.edges_count, dtype=np.bool)
+        mask = np.ones(mesh.mesh_data.edges_count, dtype=bool)
         edge_groups = MeshUnion(mesh.mesh_data.edges_count, self.__fe.device)
         while mesh.mesh_data.edges_count > self.__out_target:
             value, edge_id = heappop(queue)

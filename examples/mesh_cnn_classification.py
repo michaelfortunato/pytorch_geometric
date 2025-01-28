@@ -209,6 +209,8 @@ def main():
     # must define: --data_root YOUR_PATH --dataset_name shrec16 or cubes
     parser = make_parser()
     args = parser.parse_args()
+    if (args.gpu_ids == -1): 
+        args.gpu_ids = []
 
     # load train and test datasets:
     if args.dataset_name == 'shrec16':
