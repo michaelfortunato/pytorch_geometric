@@ -80,6 +80,7 @@ from .neurograph import NeuroGraphDataset
 from .web_qsp_dataset import WebQSPDataset, CWQDataset
 from .git_mol_dataset import GitMolDataset
 from .molecule_gpt_dataset import MoleculeGPTDataset
+from .instruct_mol_dataset import InstructMolDataset
 from .tag_dataset import TAGDataset
 
 from .dbp15k import DBP15K
@@ -197,6 +198,7 @@ homo_datasets = [
     'CWQDataset',
     'GitMolDataset',
     'MoleculeGPTDataset',
+    'InstructMolDataset',
     'TAGDataset',
     'MeshShrech16Dataset',
     'MeshCubesDataset',
