@@ -18,6 +18,7 @@ from .kge import *  # noqa
 from .models import *  # noqa
 from .mesh import *  # noqa
 from .functional import *  # noqa
+from .nlp import *  # noqa
 
 __all__ = [
     'Reshape',
