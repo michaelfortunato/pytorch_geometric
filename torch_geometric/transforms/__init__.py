@@ -39,7 +39,7 @@ from .virtual_node import VirtualNode
 from .add_positional_encoding import AddLaplacianEigenvectorPE, AddRandomWalkPE
 from .feature_propagation import FeaturePropagation
 from .half_hop import HalfHop
-from .to_dual_graph import ToDualGraph
+from .mesh_to_dual_graph import MeshToDualGraph
 
 from .distance import Distance
 from .cartesian import Cartesian
