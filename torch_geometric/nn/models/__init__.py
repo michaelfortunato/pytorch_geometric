@@ -38,6 +38,7 @@ from .sgformer import SGFormer
 from torch_geometric.explain.algorithm.captum import (to_captum_input,
                                                       captum_output_to_dicts)
 from .attract_repel import ARLinkPredictor
+from .meshcnn import MeshCNN
 
 __all__ = classes = [
     'MLP',
@@ -89,4 +90,5 @@ __all__ = classes = [
     'GLEM',
     'SGFormer',
     'ARLinkPredictor',
+    'MeshCNN',
 ]
