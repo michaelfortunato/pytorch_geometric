@@ -219,27 +219,12 @@ class MeshCNN(torch.nn.Module):
         def forward(self, data: Data) -> Data:
             r"""Computes :math:`f(\mathcal{m}) = (X, A)`."""
             pos, face = self._assert_mesh(data)
-            adj = self.adj(face)
-            # e_i = torch.repeat_interleave(torch.arange(adj.size(0)), 4)
-            # e_i = torch.stack([e_i, adj])
-            # Btw edege_index = e_i
-            return Data(edge_index=adj)
-
-        @staticmethod
-        def _assert_mesh(data: Data) -> tuple[Tensor, Tensor]:
-            """Validate and return mesh tensors with proper shapes.
-
-            Error otherwise.
-            Like unwrap in Rust
-            """
-            assert data.pos is not None, "Data must have `pos` attribute"
-            assert data.face is not None, "Data must have `face` attribute"
-            if data.pos.size(1) != 3:
-                raise ValueError(f"pos must be [|V|, 3], got {data.pos.shape}")
-            if data.face.size(0) != 3:
-                raise ValueError(
-                    f"face must be [3, |F|], got {data.face.shape}")
-            return cast(Tensor, data.pos), cast(Tensor, data.face)
+            edge_adjacency, unique_edges = self.adj(face)
+            X = self.features(pos, edge_adjacency, unique_edges)
+            A = torch.repeat_interleave(torch.arange(edge_adjacency.size(0)),
+                                        4)
+            A = torch.stack([A, edge_adjacency.view(-1)], dim=0)
+            return Data(x=X, edge_index=A)
 
         @staticmethod
         def adj(face: torch.Tensor):
@@ -283,4 +268,106 @@ class MeshCNN(torch.nn.Module):
             adjacency[interior_edge_indices,
                       2:] = sorted_neighbors[second_positions]
 
-            return adjacency
+            return adjacency, unique_edges
+
+        @staticmethod
+        def features(pos: Tensor, edge_adjacency: Tensor,
+                     unique_edges: Tensor):
+            #        C
+            #       /|\
+            #      / | \
+            #     /  |  \
+            #    /   |   \
+            #   /    |    \
+            #  /     |     \
+            # A------O------B
+            #  \     |     /
+            #   \    |    /
+            #    \   |   /
+            #     \  |  /
+            #      \ | /
+            #       \|/
+            #        D
+            edge_AC_ids = edge_adjacency[:, 0]
+            edge_BD_ids = edge_adjacency[:, 2]
+
+            edge_AC_vertex_ids = unique_edges.t()[edge_AC_ids]
+            edge_BD_vertex_ids = unique_edges.t()[edge_BD_ids]
+            edge_AB_vertex_ids = unique_edges.t()
+            # the vertex ids of the whole neighborhood
+            neighborhood_vertex_ids = torch.stack(
+                [edge_AC_vertex_ids, edge_BD_vertex_ids],
+                dim=-1).view(-1, 4)  # (|E|, 4)
+            __alias = neighborhood_vertex_ids  # Just to keep it 79 width
+            edge_AB_v1_mask = __alias == edge_AB_vertex_ids[:, 0].view(-1, 1)
+            edge_AB_v2_mask = __alias == edge_AB_vertex_ids[:, 1].view(-1, 1)
+            edge_AB_vertex_id_mask = edge_AB_v1_mask | edge_AB_v2_mask
+            opposite_vertex_ids = neighborhood_vertex_ids[
+                ~edge_AB_vertex_id_mask].view(-1, 2)
+
+            pos_A = pos[edge_AB_vertex_ids][:, 0, :]
+            pos_B = pos[edge_AB_vertex_ids][:, 1, :]
+            pos_O = (pos_A +
+                     pos_B) / 2  # i.e. the midpoint pos_A + (pos_B - pos_A)/2
+            pos_C = pos[opposite_vertex_ids][:, 0, :]
+            pos_D = pos[opposite_vertex_ids][:, 1, :]
+
+            vec_AB = pos_B - pos_A
+            vec_AC = pos_C - pos_A
+            vec_BC = pos_C - pos_B
+            vec_AD = pos_D - pos_A
+            vec_BD = pos_D - pos_B
+
+            normal_1 = torch.cross(vec_AB, vec_AC, dim=-1)
+            normal_2 = torch.cross(vec_AB, vec_AD, dim=-1)
+            normal_1_norm = normal_1 / torch.norm(normal_1, p=2, dim=-1,
+                                                  keepdim=True)
+            normal_2_norm = normal_2 / torch.norm(normal_2, p=2, dim=-1,
+                                                  keepdim=True)
+            # TODO: Verify this is right
+            dihedral_angle = torch.pi - torch.acos(
+                torch.clamp(torch.sum(normal_1_norm * normal_2_norm, dim=-1),
+                            -1, 1))
+
+            # Compute the angles
+            vec_AC_norm = vec_AC / torch.norm(vec_AC, dim=-1, keepdim=True)
+            vec_BC_norm = vec_BC / torch.norm(vec_BC, dim=-1, keepdim=True)
+            cos_alpha = torch.sum(vec_AC_norm * vec_BC_norm, dim=-1)
+            cos_alpha = torch.clamp(cos_alpha, -1, 1)
+            alpha = torch.acos(cos_alpha)  # Shape: (750,)
+
+            vec_AD_norm = vec_AD / torch.norm(vec_AD, dim=-1, keepdim=True)
+            vec_BD_norm = vec_BD / torch.norm(vec_BD, dim=-1, keepdim=True)
+            cos_beta = torch.sum(vec_AD_norm * vec_BD_norm, dim=-1)
+            cos_beta = torch.clamp(cos_beta, -1, 1)
+            beta = torch.acos(cos_beta)
+
+            OC_AB_ratio = torch.norm(pos_C - pos_O, dim=1) / torch.norm(
+                pos_B - pos_A, dim=1)
+            OD_AB_ratio = torch.norm(pos_D - pos_O, dim=1) / torch.norm(
+                pos_B - pos_A, dim=1)
+
+            features = torch.stack([
+                dihedral_angle,
+                torch.min(alpha, beta),
+                torch.max(alpha, beta),
+                torch.min(OC_AB_ratio, OD_AB_ratio),
+                torch.max(OC_AB_ratio, OD_AB_ratio)
+            ], dim=1)
+            return features
+
+        @staticmethod
+        def _assert_mesh(data: Data) -> tuple[Tensor, Tensor]:
+            """Validate and return mesh tensors with proper shapes.
+
+            Error otherwise.
+            Like unwrap in Rust
+            """
+            assert data.pos is not None, "Data must have `pos` attribute"
+            assert data.face is not None, "Data must have `face` attribute"
+            if data.pos.size(1) != 3:
+                raise ValueError(f"pos must be [|V|, 3], got {data.pos.shape}")
+            if data.face.size(0) != 3:
+                raise ValueError(
+                    f"face must be [3, |F|], got {data.face.shape}")
+            return cast(Tensor, data.pos), cast(Tensor, data.face)
