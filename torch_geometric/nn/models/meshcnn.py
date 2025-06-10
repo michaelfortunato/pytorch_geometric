@@ -1,4 +1,4 @@
-from typing import Callable, List, Union, cast
+from typing import Callable, List, Optional, Union, cast
 
 import torch
 from torch import Tensor
@@ -71,20 +71,20 @@ class MeshCNN(torch.nn.Module):
 
         1. The dihedral angle of the two faces incident to edge :math:`e_i`.
 
-        2. The minimum of :obj:`Inner Angle 1` and
+        2. The minimum of `Inner Angle 1` and
         `Inner Angle 2` , where
-        `Inner Angle 1 ` represents the angle formed
+        `Inner Angle 1` represents the angle formed
         by the two other edges of face 1.
 
-        3. The maximum of `Inner Angle 1` and `Inner Angle 2` .
+        3. The maximum of `Inner Angle 1` and `Inner Angle 2`.
 
-        4. The minimum of `Edge Ratio 1` and Edge Ratio 2`, where
+        4. The minimum of `Edge Ratio 1` and `Edge Ratio 2`, where
         `Edge Ratio 1` is the ratio
         between the edge and the line perpendicular
         to the edge from the opposite
         vertex of face 1.
 
-        5. The maximum of `Edge Ratio 1` and Edge Ratio 2`.
+        5. The maximum of `Edge Ratio 1` and `Edge Ratio 2`.
 
         Please see *Figure 1* for an illustration.
 
@@ -149,7 +149,9 @@ class MeshCNN(torch.nn.Module):
             are :math:`\mathbf{e_2}, \mathbf{e_3}, \mathbf{e_4}` and
             :math:`\mathbf{e_5}`, respectively.
             We write this as
-            :math:`\mathcal{N}(1) = (a(1), b(1), c(1), d(1)) = (2, 3, 4, 5)`
+            :math:`\mathcal{N}(1) = (a(1), b(1), c(1), d(1)) = (2, 3, 4, 5)`.
+            As another example,
+            :math:`\mathcal{N}(9) = (a(9), b(9), c(9), d(9)) = (10, 7, 5, 6)`.
 
         Because of this ordering constrait, :obj:`FeatureExtractionLayer`
         returns :math:`A` with *the following ordering*:
@@ -186,7 +188,7 @@ class MeshCNN(torch.nn.Module):
 
         Args:
             data(Data): A :obj:`Data` object representing a
-                triangular mesh :math:`\mathcal{m} = (V, F)`
+                triangular mesh :math:`\mathcal{m} = (V, F)`.
                 It MUST have the two attributes:
 
                 * :obj:`mesh.pos`: :math:`V`. The :obj:`Tensor` of shape
@@ -219,46 +221,119 @@ class MeshCNN(torch.nn.Module):
         def forward(self, data: Data) -> Data:
             r"""Computes :math:`f(\mathcal{m}) = (X, A)`."""
             pos, face = self._assert_mesh(data)
-            edge_adjacency, unique_edges = self.adj(face)
-            X = self.features(pos, edge_adjacency, unique_edges)
+            edge_adjacency, unique_edges, _ = self.edge_adjacency(face)
+            X = self.edge_features(pos, edge_adjacency, unique_edges)
             A = torch.repeat_interleave(torch.arange(edge_adjacency.size(0)),
                                         4)
             A = torch.stack([A, edge_adjacency.view(-1)], dim=0)
             return Data(x=X, edge_index=A)
 
         @staticmethod
-        def adj(face: torch.Tensor):
+        def edge_adjacency(
+                face: torch.Tensor) -> tuple[Tensor, Tensor, Tensor]:
+            r"""Compute the edge adjacency."""
             edges = torch.stack(
                 [
                     face[[0, 1], :],  # v0 -> v1
                     face[[1, 2], :],  # v1 -> v2
                     face[[2, 0], :],  # v2 -> v0
                 ],
-                dim=2).reshape(2, -1)
+                dim=2).reshape(2, -1)  # (2, 3|F|)
 
-            sorted_edges, _ = torch.sort(edges, dim=0)
-
+            # unique_edges: shape (2, |E|)
+            #   Think of this tensor as edge id to edge definition map
+            #   In other words, unique_edge[:, i] returns the two vertex
+            #   ids in our mesh that construct edge i.
+            #   Why do we do this? We want to assign each edge (v1,v2)
+            #   an id. unique_edges associates each unique pair (v1, v2)
+            #   with an index (unique_edges[:,i] = (v1, v2)), thus implicitly
+            #   assigning an id to each edge. To summarize, to see the two
+            #   vertices that construct edge with id i, inspect
+            #   unique_edge[:, i].
+            # edge_ids: shape (1, 3|F|)
+            #   unique_edges[edge_ids] == torch.sort(edges, dim=0)[0]
+            #   In words, the ith entry of edge_ids tells us which edge_id
+            #   the edge in edges (technically, torch.sort(edges, dim=0)[0])
+            #   corresponds to. This is crucial because edges has the structure
+            #   that every 3 consecutive edges forms a face. For instance,
+            #   edges[:, i], edges[:, i+1], edges[:, i+2] form face i.
+            # edge_counts: shape (|E|, 1)
+            #   edge_counts[i] tells us how many times edge with id i
+            #   appears in our mesh. If edge with id i is a boundary edge,
+            #   edge_counts[i] is 1. Other, the edge with id i is an
+            #   interior edge, and so edge_counts[i] is 2.
             unique_edges, edge_ids, edge_counts = torch.unique(
-                sorted_edges, dim=1, return_inverse=True, return_counts=True)
+                # sort the vertex indices within each edge so that
+                # unique works. Recall that edges is shape (2, 3|F|)
+                # torch.sort sorts the vertex indices within each edge
+                # so that edge_a = (v1, v2) can be deduplicated with
+                # edge_b = (v2, v3).
+                # For instance, say edges = [[1, 2], [[2, 1]], [0,3], [0, 5]]
+                # then torch.sort(edges, dim=0)[0] returns
+                # torch.sort(edges, dim=0)[0] =
+                #   [[1, 2], [[1, 2]], [0,3], [0, 5]]
+                # This then allows torch.unique to deduplicate [[1,2]]
+                # and [[1,2]]. Note that torch.sort(edges, dim=0) returns a
+                # the indices along with the sorted edges themselves. We only
+                # care about the edges themselves, hence
+                # torch.sort(edges, dim=0)[0]
+                torch.sort(edges, dim=0)[0],
+                # Our input edges have shape (2, |E|), and we wish to
+                # deduplicate (v1, v2) from (v2, v1), hence we call unique on
+                # dim=1.
+                dim=1,
+                return_inverse=True,
+                return_counts=True)
 
+            # face_edges: shape (|F|, 3)
+            #   Recall that edge_ids[i] returns the edge id associated
+            #   with edges[:,i]. Furthermore, every 3 consecutive edges,
+            #   edges[:, i], edges[:, i+1], edges[:, i+2] construct face i.
+            #   Therefore, edge_ids[i], edge_ids[i+1], edge_ids[i+2]
+            #   are the three edge ids that construct face i. Therefore,
+            #   face_edges[i] returns the 3 edge ids that construct face i in
+            #   our input mesh. (Remember, to get the two vertex ids
+            #   that construct edge with id i), use unique_edges[:, i])
             face_edges = edge_ids.view(-1, 3)
 
+            # neighbor_pairs: shape (3|F|, 2)
+            #   Reecal that every three consecutive edges in face_edges
+            #   holds the three edge ids that construct face i. That is,
+            #   face_edges[i, 0], face_edges[i, 1], face_edges[i:, 2]
+            #   construct face i.
+            #   Given a face f_i = (e_0, e_1, e_2), the edges can be ordered
+            #   in three possible ways:
+            #       (e_0, e_1, e_2), (e_2, e_0, e_1), and (e_1, e_2, e_0).
+            #   When we are trying to find the two edges adjacent to e_0,
+            #   we want to use (e_0, e_1, e_2), and similarly we want to use
+            #   (e_1, e_2, e_0) and (e_2, e_0, e_1), when considering edge e_1
+            #   and edge e_2 as the base edge of the face.
+            #   By enumerating all 3 windings of a face, we set ourselves up
+            #   for considering the neighbhorood. Then, we use stack and view
+            #   to set up the key ingredient.
+            #   At last the following is the key ingredient to
+            #   neighbhor_pairs. Let as before, let us consider
+            #   f_i = (e_0, e_1, e_2). neighbor_pairs has the following order
+            #       neighbor_pairs[i] = [e_0, e_1]
+            #       neighbor_pairs[i + |F|] = [e_1, e_2]
+            #       neighbor_pairs[i + 2|F|] = [e_2, e_0]
             neighbor_pairs = torch.stack(
                 [face_edges[:, [(i + 1) % 3, (i + 2) % 3]] for i in range(3)],
                 dim=1).reshape(-1, 2)
 
+            # edge_ids tells us the edge id of the ith edge in edges.
             sorted_edge_ids, order = torch.sort(edge_ids)
             sorted_neighbors = neighbor_pairs[order]
 
             first_occurrence_mask = torch.cat([
-                torch.tensor([True], device=edges.device), sorted_edge_ids[1:]
+                torch.tensor([True], device=face.device), sorted_edge_ids[1:]
                 != sorted_edge_ids[:-1]
             ])
 
             first_positions = first_occurrence_mask.nonzero(as_tuple=True)[0]
 
             adjacency = torch.full((unique_edges.size(1), 4), -1,
-                                   dtype=torch.long, device=edges.device)
+                                   dtype=torch.long)
 
             adjacency[:, :2] = sorted_neighbors[first_positions]
 
@@ -268,11 +343,13 @@ class MeshCNN(torch.nn.Module):
             adjacency[interior_edge_indices,
                       2:] = sorted_neighbors[second_positions]
 
-            return adjacency, unique_edges
+            return adjacency, unique_edges, interior_edge_indices
 
         @staticmethod
-        def features(pos: Tensor, edge_adjacency: Tensor,
-                     unique_edges: Tensor):
+        def edge_features(
+                pos: Tensor, edge_adjacency: Tensor, unique_edges: Tensor,
+                interior_edge_ids: Optional[Tensor] = None) -> Tensor:
+            r"""Compute the edge features."""
             #        C
             #       /|\
             #      / | \
@@ -324,7 +401,6 @@ class MeshCNN(torch.nn.Module):
                                                   keepdim=True)
             normal_2_norm = normal_2 / torch.norm(normal_2, p=2, dim=-1,
                                                   keepdim=True)
-            # TODO: Verify this is right
             dihedral_angle = torch.pi - torch.acos(
                 torch.clamp(torch.sum(normal_1_norm * normal_2_norm, dim=-1),
                             -1, 1))
