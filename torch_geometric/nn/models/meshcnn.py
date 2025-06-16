@@ -328,22 +328,37 @@ class MeshCNN(torch.nn.Module):
             first_occurrence_mask = torch.cat([
                 torch.tensor([True], device=face.device), sorted_edge_ids[1:]
                 != sorted_edge_ids[:-1]
-            ])
+            ])  # shape (|edges|, 1)
 
-            first_positions = first_occurrence_mask.nonzero(as_tuple=True)[0]
-
-            adjacency = torch.full((unique_edges.size(1), 4), -1,
-                                   dtype=torch.long)
-
-            adjacency[:, :2] = sorted_neighbors[first_positions]
-
-            interior_edge_indices = (edge_counts == 2).nonzero(
-                as_tuple=True)[0]
-            second_positions = first_positions[interior_edge_indices] + 1
-            adjacency[interior_edge_indices,
-                      2:] = sorted_neighbors[second_positions]
-
-            return adjacency, unique_edges, interior_edge_indices
+            # NOTE: An edge can be a boundary edge or an interior edge.
+            # If edge i is a boundary edge, it has only two neighbors,
+            # with edge_adjacency[i,3], edge_adjacency[i, 4] = -1.
+            # Otherwise edge is an interior edge with 4 distinct neighbors.
+            # In the case edge i is a boundary edge,
+            # the MeshCNN paper simply considers
+            # edge_adjacency[i, 3] = edge_adjacency[i, 0]
+            # and edge_adjacency[i, 4] = edge_adjacency[i, 1]
+            # when computing the features of edge i.
+            # So we modify edge_adjacency accordingly here.
+            # ref: https://github.com/ranahanocka/MeshCNN/blob/5bf0b899d48eb204b9b73bc1af381be20f4d7df1/models/layers/mesh_prepare.py#L384 # noqa: E501
+            interior_edge_mask = edge_counts == 2
+            # (|edges|, 2)
+            # Think of sorted_neighbors[first_occurrence_mask] as
+            # edges a, b
+            first_neighbors = sorted_neighbors[first_occurrence_mask]
+            # (|edges|, 4)
+            # For our adjacency tensor, we know that every edge
+            # will have its first two neigbors. So we just
+            # copy the a,b edges to match MeshCNN's implementation
+            # (see above).
+            adjacency = first_neighbors.repeat(1, 2)
+            # Overwrite interior edges with their actual second neighbors
+            # Think of sorted_neighbors[~first_occurrence_mask] as
+            # edges c, d
+            # Only interior edges have c and d
+            adjacency[interior_edge_mask,
+                      2:4] = sorted_neighbors[~first_occurrence_mask]
+            return adjacency, unique_edges, interior_edge_mask
 
         @staticmethod
         def edge_features(
