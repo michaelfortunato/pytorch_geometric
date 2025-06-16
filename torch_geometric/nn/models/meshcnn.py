@@ -223,8 +223,9 @@ class MeshCNN(torch.nn.Module):
             pos, face = self._assert_mesh(data)
             edge_adjacency, unique_edges, _ = self.edge_adjacency(face)
             X = self.edge_features(pos, edge_adjacency, unique_edges)
-            A = torch.repeat_interleave(torch.arange(edge_adjacency.size(0)),
-                                        4)
+            A = torch.repeat_interleave(
+                torch.arange(edge_adjacency.size(0),
+                             device=edge_adjacency.device), 4)
             A = torch.stack([A, edge_adjacency.view(-1)], dim=0)
             return Data(x=X, edge_index=A)
 
