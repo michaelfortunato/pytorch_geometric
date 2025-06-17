@@ -1,7 +1,7 @@
-from typing import Callable, List, Optional, Union, cast
+from typing import cast
 
 import torch
-from torch import Tensor
+from torch import BoolTensor, Tensor
 
 from torch_geometric.data import Data
 from torch_geometric.data.datapipes import functional_transform
@@ -12,30 +12,28 @@ class MeshCNN(torch.nn.Module):
     r"""The neural network from the paper `"MeshCNN: A Network With An Edge"
     <https://arxiv.org/abs/1809.05910>`_.
 
+    .. ATTENTION::
+        MeshCNN is not yet ready for use, and its ongoing development
+        is being tracked in issue `#283
+        <https://github.com/pyg-team/pytorch_geometric/issues/283>`__.
+        Any usage of this class will raise a :obj:`NotImplementedError`
+        error.
 
-    Args:
-        in_channels (int): Size of each input sample.
-        hidden_channels (int): Size of each hidden sample.
-        out_channels (int): Size of each output sample.
-        depth (int): The depth of the U-Net architecture.
-        pool_ratios (float or [float], optional): Graph pooling ratio for each
-            depth. (default: :obj:`0.5`)
-        sum_res (bool, optional): If set to :obj:`False`, will use
-            concatenation for integration of skip connections instead
-            summation. (default: :obj:`True`)
-        act (torch.nn.functional, optional): The nonlinearity to use.
-            (default: :obj:`torch.nn.functional.relu`)
     """
-    def __init__(
-        self,
-        in_channels: int,
-        hidden_channels: int,
-        out_channels: int,
-        depth: int,
-        pool_ratios: Union[float, List[float]] = 0.5,
-        sum_res: bool = True,
-        act: Union[str, Callable] = 'relu',
-    ):
+    def __init__(self):
+        raise NotImplementedError
+
+    def forward(self):
+        r"""
+        ..
+            Can't hide the documentation of this method.
+            This is next best option.
+
+        Raises:
+            NotImplementedError: Always, until `#283
+              <https://github.com/pyg-team/pytorch_geometric/issues/283>`__
+              is finished.
+        """  # noqa: D212, D419
         raise NotImplementedError
 
     @functional_transform('meshcnn_feature_extraction_layer')
@@ -52,7 +50,7 @@ class MeshCNN(torch.nn.Module):
 
         .. math::
             &\text{FeatureExtraction}(\mathcal{m}) \mapsto (X^{(1)}, A) \\
-            &\text{where, } \mathcal{m} = (V, F) \in \mathbb{R}^{|V| \times 3}
+            &\text{where } \mathcal{m} = (V, F) \in \mathbb{R}^{|V| \times 3}
             \times \{0,...,|E|-1|\}^{3 \times |F|}, \\
             &X^{(1)} \in \mathbb{R}^{|E| \times 5}, \\
             &A \in \{0, ..., |E| - 1\}^{2 \times 4*|E|}.
@@ -186,43 +184,106 @@ class MeshCNN(torch.nn.Module):
             A[:, 4*i + 2] &= (i, c(i)) \\
             A[:, 4*i + 3] &= (i, d(i))
 
-        Args:
-            data(Data): A :obj:`Data` object representing a
-                triangular mesh :math:`\mathcal{m} = (V, F)`.
-                It MUST have the two attributes:
+        ..
+            FIXME:
+            We use the 2 below directives
+            to render the docs for the forward method,
+            which I argue is important. This can be changed universally
+            for all torch_geometric.transforms by modifying
+            pytorch_gemoetric/source/modules/transforms.rst?plain=1#L30
+            to use autosummary/class.rst as its template instead of
+            autosummary/only_class.rst.
+            Because MeshCNN.FeatureExtractionLayer is a nested class in
+            torch_geometric.nn.models, autosummary/nn.rst needs to be
+            modified to handle nested subclasses with the forward method.
+            In particular, problems are happening because autosummary/nn.rst
+            has `:exclude-members: forward` but then re-includes
+            it with `..automethod:: forward`, which works for top level
+            classes for modules in torch_geometric.nn.models.* but does
+            not work for classes inside a class.
 
-                * :obj:`mesh.pos`: :math:`V`. The :obj:`Tensor` of shape
-                  :obj:`[|V|, 3]`
+        .. currentmodule:: torch_geometric.nn.models.meshcnn.MeshCNN
+        .. automethod:: FeatureExtractionLayer.forward
 
-                * :obj:`mesh.face`: :math:`F`. The :obj:`Tensor` of shape
-                  :obj:`[3, |F|]`.
-
-        Returns:
-            :math:`(X^{(1)}, A)`. In particular, this is a :obj:`Data` object
-            that has the two attributes:
-
-                * :obj:`data.x`: :math:`X^{(1)} \in \mathbb{R}^{|E| \times 5}`.
-                  The :obj:`Tensor` of shape :obj:`[|E| \times 5]`, which is
-                  also known as is the *edge feature matrix*.
-
-                * :obj:`data.edge_index`:
-                  :math:`A \in \{0, ..., |E|-1\}^{2 \times 4 * |E|}`.
-                  The :obj:`Tensor` of shape :obj:`[2, 4*|E|]`, which is
-                  also known as is the *edge adjacency matrix*.
-
-        .. warning::
-            We assume that the vertex indices given in :math:`F` are already
-            ordered counter-clockwise. This requirement is also known
-            as ensuring that the mesh has a valid *winding*.
         """
         def __init__(self) -> None:
             return super().__init__()
 
         def forward(self, data: Data) -> Data:
-            r"""Computes :math:`f(\mathcal{m}) = (X, A)`."""
+            r"""Computes :math:`f(\mathcal{m}) = (X, A)`.
+
+            .. ATTENTION::
+                :obj:`face` MUST have consistent winding. See
+                `here <https://trimesh.org/trimesh.base.html
+                #trimesh.base.Trimesh.is_winding_consistent>`__) to learn
+                what winding is. Fortunately, most programs such as Blender
+                and trimesh ensure that their triangular meshes
+                (a.k.a. the faces of the triangular meshes) have
+                proper winding.
+
+            Args:
+                data (Data):
+                    A :obj:`Data` object representing a
+                    triangular mesh :math:`\mathcal{m} = (V, F)`.
+                    It MUST have the two attributes:
+
+                        - :obj:`data.pos` :math:`V`. A :obj:`torch.Tensor`
+                            of shape
+                            :obj:`[|V|, 3]`.
+
+                        - :obj:`data.face`: :math:`F`. A :obj:`torch.Tensor` of
+                            shape
+                            :obj:`[3, |F|]`.
+
+            Returns:
+                Data: Returns a :obj:`Data` object that
+                has the two attributes:
+
+                    * :obj:`data.x`
+                      :math:`X^{(1)} \in \mathbb{R}^{|E| \times 5}`.
+                        A :obj:`torch.Tensor` of shape :obj:`[|E|, 5]`,
+                        which is
+                        also known as is the *edge feature matrix*.
+
+                    * :obj:`data.edge_index`
+                      :math:`A \in \{0, ..., |E|-1\}^{2 \times 4 * |E|}`.
+                        A :obj:`torch.Tensor` of shape :obj:`[2, 4*|E|]`,
+                        which is
+                        also known as is the *edge adjacency matrix*.
+
+            .. Example::
+
+                import torch
+                from torch_geometric.data import Data
+                from torch_geometric.nn.models import MeshCNN
+                # tetrahedral mesh
+                # pos.shape=(num_vertices, 3)=(4, 3)
+                pos = torch.tensor([[0., 0., 0.], [1., 1., 0.],
+                                    [1., 0., 1.], [0., 1., 1.]])
+                # face.shape=(3, num_faces)=(3, 4)
+                face = torch.tensor([[0, 3, 0, 3], [1, 1, 2, 2],
+                                                    [2, 0, 3, 1]])
+                data = Data(pos = pos, face = face)
+                meshcnn_layer_1 = MeshCNN.FeatureExtractionLayer()
+                data = meshcnn_layer1.forward(data)
+                print(data)
+                >>> Data(x=[6, 5], edge_index=[2, 24])
+                print(f"X^(1) = {data.x}")
+                >>> X^(1) = tensor([[1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660]])
+                print(f"A = {data.edge_index}")
+                >>> A = tensor([[ 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
+                ... 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5 ],
+                ...     [3, 1, 2, 4, 0, 3, 5, 2, 4, 0, 1, 5, 1, 0,
+                ... 4, 5, 0, 2, 5, 3, 2, 1, 3, 4 ]])
+            """
             pos, face = self._assert_mesh(data)
-            edge_adjacency, unique_edges, _ = self.edge_adjacency(face)
-            X = self.edge_features(pos, edge_adjacency, unique_edges)
+            edges, edge_adjacency, _ = self.edge_adjacency(face)
+            X = self.edge_features(pos, edges, edge_adjacency)
             A = torch.repeat_interleave(
                 torch.arange(edge_adjacency.size(0),
                              device=edge_adjacency.device), 4)
@@ -231,26 +292,120 @@ class MeshCNN(torch.nn.Module):
 
         @staticmethod
         def edge_adjacency(
-                face: torch.Tensor) -> tuple[Tensor, Tensor, Tensor]:
-            r"""Compute the edge adjacency."""
-            edges = torch.stack(
-                [
-                    face[[0, 1], :],  # v0 -> v1
-                    face[[1, 2], :],  # v1 -> v2
-                    face[[2, 0], :],  # v2 -> v0
-                ],
-                dim=2).reshape(2, -1)  # (2, 3|F|)
+                face: torch.Tensor) -> tuple[Tensor, Tensor, BoolTensor]:
+            r"""Computes the edge adjacency matrix of a
+            mesh :math:`\mathcal{m} = (V, F)` whose face :math:`F` is given by
+            tensor :obj:`face` (and so has shape :obj:`(3, |F|)`).
 
-            # unique_edges: shape (2, |E|)
+            Given a triangular mesh :math:`\mathcal{M} = (V, F)` with
+            faces :math:`F`, this method computes the edges and
+            their adjacency relationships required
+            by MeshCNN. Each edge can be adjacent to either 2 neighboring edges
+            (boundary edges) or 4 neighboring edges (interior edges).
+
+            .. ATTENTION::
+                The input :obj:`face` tensor MUST have consistent
+                winding order.
+                Most mesh processing libraries (Blender, trimesh) ensure proper
+                winding by default. See `trimesh documentation
+                <https://trimesh.org/trimesh.base.html#trimesh.base.Trimesh.is_winding_consistent>`__ .. # noqa: E501
+                for more details.
+
+            **Edge Adjacency Definition:**
+
+            An **incident face** to an edge is a triangular
+            face that contains that edge
+            as one of its three sides.
+            Each edge can have 1 or 2 incident faces.
+
+            For each edge :math:`e_i` in the mesh, we define its neighborhood
+            :math:`\mathcal{N}(i) = (a(i), b(i), c(i), d(i))` where:
+
+            - :math:`a(i)`: First counter-clockwise edge of face 1
+            - :math:`b(i)`: Second counter-clockwise edge of face 1
+            - :math:`c(i)`: First counter-clockwise edge of face 2
+            - :math:`d(i)`: Second counter-clockwise edge of face 2
+
+            **Boundary vs Interior Edges:**
+
+            - **Interior edges**: Adjacent to exactly 2 faces
+              (face 1 ≠ face 2), have 4 unique neighboring edges
+            - **Boundary edges**: Adjacent to only 1 face (face 1 = face 2),
+              have 2 neighboring edges which are
+              duplicated in the adjacency matrix following
+              MeshCNN's convention: :math:`c(i) = a(i)`, :math:`d(i) = b(i)`.
+
+            ..
+                Recall that MeshCNN acts on meshes of the form
+                :math:`\mathcal{m} = (V, F)`. Here,
+                :math:`V = (v_1, ..., v_n)` for :math:`v_i \in \mathbb{R}^3`
+                represents the vertices of the mesh and
+                :math:`F = \bigcup^o (i,j,k)
+                \quad 0 \leq i,j,k < n, i \neq j \neq k`
+                are the faces of the mesh. If :math:`f = (1, 2, 3) \in F`,
+                we say that face :math:`f` in mesh :math:`\mathcal{m}` is
+                constructed by vertices :math:`v_1, v_2, v_3 \in V`.
+                We use :math:`|V| = n` to denote the number of vertices of
+                :math:`\mathcal{m}` and :math:`|F| = o` to denote the number
+                of faces of :math:`\mathcal{m}`.
+                The edge adjacency matrix of :math:`\mathcal{m} = (V, F)`
+                is described in detail in :class:`FeatureExtractionLayer`.
+                However, we will breifly reiterate its definition here.
+                :obj:`face` is the :obj:`(3, num_faces)` tensor representing
+                the faces :math:`F` of a mesh :math:`\mathcal{m} = (V, F)`.
+                :obj:`edge_adjacency` is a function that given the faces
+                :obj:`face` of a mesh, computes the :obj:`edges`, and
+                the :obj:`edge_adjacency` of the mesh (it also returns
+                the set of edge ids that are interior edges of the mesh, but
+                that is not really used).
+
+            Args:
+                face (torch.Tensor): Shape: :obj:`(3, |F|)`. The faces
+                  :math:`F` of the input
+                  mesh :math:`\mathcal{m} = (V, F)` with shape
+                  :obj:`(3, |F|)`. For instance, :obj:`face[:,i] = [1, 2, 3]`
+                  says that face :math:`i` of input mesh :math:`\mathcal{m}`
+                  is constructed by vertices :math:`v_1, v_2, v_3 \in V`.
+
+            Returns:
+                tuple[torch.Tensor, torch.Tensor, torch.BoolTensor]:
+                A triplet of tensors
+                :obj:`(edges, edge_adjacency, _interior_edge_mask)`.
+                Each tensor is documented in full below.
+
+                1. :obj:`edges` (torch.Tensor): Shape: :obj:`(2, |E|)`.
+                This tensor represents the edges of the input mesh
+                :math:`\mathcal{m} = (V, F)` whose face :math:`F` is given by
+                :obj:`face`. :obj:`edges` is a :obj:`torch.Tensor` of shape
+                :obj:`(2, |E|)`, where :obj:`|E|` denotes the number
+                of edges in the mesh :math:`\mathcal{m}`.
+
+                2. :obj:`edge_adjacency` (torch.Tensor). Shape:
+                :obj:`(|E|, 4)`.
+                This tensor represents the edge adjacencies of the input mesh
+                :math:`\mathcal{m} = (V, F)` whose face :math:`F` is given by
+                :obj:`face`.
+
+                3. :obj:`_interior_edge_mask` (torch.BoolTensor).
+                Shape: :obj:`(|E|, 1)`. This is output is usually ignored
+                but we return it because it might be useful for debugging.
+                :obj:`_interior_edge_mask[i] = True` if edge i is an interior
+                edge, that is if edge i is adjacent to four unique edges.
+                This can also be checked in code by seeing if
+                :obj:`edge_adjacency[i, 0] != edge_adjacency[i, 2]`.
+
+            """
+            # edges: shape (2, |E|)
             #   Think of this tensor as edge id to edge definition map
-            #   In other words, unique_edge[:, i] returns the two vertex
+            #   In other words, edges[:, i] returns the two vertex
             #   ids in our mesh that construct edge i.
+            #   Note that we deduplicate edges (v1, v2) and edge (v2, v1).
             #   Why do we do this? We want to assign each edge (v1,v2)
             #   an id. unique_edges associates each unique pair (v1, v2)
-            #   with an index (unique_edges[:,i] = (v1, v2)), thus implicitly
+            #   with an index (edges[:,i] = (v1, v2)), thus implicitly
             #   assigning an id to each edge. To summarize, to see the two
             #   vertices that construct edge with id i, inspect
-            #   unique_edge[:, i].
+            #   edges[:, i].
             # edge_ids: shape (1, 3|F|)
             #   unique_edges[edge_ids] == torch.sort(edges, dim=0)[0]
             #   In words, the ith entry of edge_ids tells us which edge_id
@@ -263,7 +418,15 @@ class MeshCNN(torch.nn.Module):
             #   appears in our mesh. If edge with id i is a boundary edge,
             #   edge_counts[i] is 1. Other, the edge with id i is an
             #   interior edge, and so edge_counts[i] is 2.
-            unique_edges, edge_ids, edge_counts = torch.unique(
+            edges = torch.stack(
+                [
+                    face[[0, 1], :],  # v0 -> v1
+                    face[[1, 2], :],  # v1 -> v2
+                    face[[2, 0], :],  # v2 -> v0
+                ],
+                dim=2).reshape(2, -1)  # (2, 3|F|)
+
+            edges, edge_ids, edge_counts = torch.unique(
                 # sort the vertex indices within each edge so that
                 # unique works. Recall that edges is shape (2, 3|F|)
                 # torch.sort sorts the vertex indices within each edge
@@ -359,13 +522,15 @@ class MeshCNN(torch.nn.Module):
             # Only interior edges have c and d
             adjacency[interior_edge_mask,
                       2:4] = sorted_neighbors[~first_occurrence_mask]
-            return adjacency, unique_edges, interior_edge_mask
+            return edges, adjacency, interior_edge_mask
 
         @staticmethod
         def edge_features(
-                pos: Tensor, edge_adjacency: Tensor, unique_edges: Tensor,
-                interior_edge_ids: Optional[Tensor] = None) -> Tensor:
-            r"""Compute the edge features."""
+            pos: Tensor,
+            edges: Tensor,
+            edge_adjacency: Tensor,
+        ) -> Tensor:
+            r"""Computes the edge features."""
             #        C
             #       /|\
             #      / | \
@@ -384,9 +549,9 @@ class MeshCNN(torch.nn.Module):
             edge_AC_ids = edge_adjacency[:, 0]
             edge_BD_ids = edge_adjacency[:, 2]
 
-            edge_AC_vertex_ids = unique_edges.t()[edge_AC_ids]
-            edge_BD_vertex_ids = unique_edges.t()[edge_BD_ids]
-            edge_AB_vertex_ids = unique_edges.t()
+            edge_AC_vertex_ids = edges.t()[edge_AC_ids]
+            edge_BD_vertex_ids = edges.t()[edge_BD_ids]
+            edge_AB_vertex_ids = edges.t()
             # the vertex ids of the whole neighborhood
             neighborhood_vertex_ids = torch.stack(
                 [edge_AC_vertex_ids, edge_BD_vertex_ids],
