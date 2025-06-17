@@ -38,51 +38,72 @@ class MeshCNN(torch.nn.Module):
 
     @functional_transform('meshcnn_feature_extraction_layer')
     class FeatureExtractionLayer(BaseTransform):
-        r"""Given a mesh :math:`\mathcal{m} = (V, F)`,
-        this method computes :math:`X^{(1)} \in \mathbb{R}^{|E| \times 5}`,
-        the *edge feature* matrix required by
-        `MeshCNN <https://arxiv.org/abs/1809.05910>`_, along with
-        :math:`A \in \{0, ..., |E| - 1\}^{2 \times 4*|E|}`,
-        the *edge adjacency* matrix required by MeshCNN.
+        r"""This is the first layer of MeshCNN and transforms
+        the input mesh :math:`\mathcal{m} = (V, F)` into the feature tensor
+        and the adjacency tensor that define the features and adjacencies
+        of the abstract graph processed by the rest of MeshCNN.
 
-        This layer, therefore,
-        can be expressed as the function.
+        Given a mesh :math:`\mathcal{m} = (V, F)`,
+        this function computes:
+
+        1. **Edge Feature Matrix**
+        :math:`X^{(1)} \in \mathbb{R}^{|E| \times 5}`:
+          TODO: The edge feature tensor, where row i holds the 5
+          geometric features associated with edge :math:`e_i` in mesh
+          :math:`m`. Using the Aggregate Update definition of a message
+          passing GNN. This tensor can be thought of as node features
+          of the line graph of :math:`m`.
+          `MeshCNN <https://arxiv.org/abs/1809.05910>`_.
+
+        2. **Edge Adjacency Matrix** :math:`A \in
+        \{0, ..., |E| - 1\}^{2 \times 4*|E|}`:
+          TODO:
+
+        We can write this layer as
 
         .. math::
-            &\text{FeatureExtraction}(\mathcal{m}) \mapsto (X^{(1)}, A) \\
-            &\text{where } \mathcal{m} = (V, F) \in \mathbb{R}^{|V| \times 3}
-            \times \{0,...,|E|-1|\}^{3 \times |F|}, \\
-            &X^{(1)} \in \mathbb{R}^{|E| \times 5}, \\
-            &A \in \{0, ..., |E| - 1\}^{2 \times 4*|E|}.
+            \text{FeatureExtraction}(\mathcal{m}) \mapsto (X^{(1)}, A)
 
-        We now explain the exact form of the *edge feature matrix*
+        where:
+            - Input: :math:`\mathcal{m} = (V, F) \in \mathbb{R}^{|V| \times 3}
+              \times \{0,...,|E|-1|\}^{3 \times |F|}`
+            - Output:
+              :math:`X^{(1)} \in \mathbb{R}^{|E| \times 5}`,
+              :math:`A \in \{0, ..., |E| - 1\}^{2 \times 4*|E|}`.
+
+        We now precisely define the *edge feature matrix*
         :math:`X^{(1)} \in \mathbb{R}^{|E| \times 3}` and the
         *edge adjacency matrix*
         :math:`A \in \{0, ..., |E| - 1\}^{2 \times 4*|E|}`.
 
+        **Edge Feature Matrix:**
+
         The :math:`i` th row of the
         *edge feature matrix* :math:`X^{(1)} \in \mathbb{R}^{|E| \times 3}`,
-        denoted as :math:`x^{(1)}_i \in \mathbb{R}^{5}` holds the :math:`5`
+        denoted as :math:`x^{(1)}_i \in \mathbb{R}^{5}`, holds the :math:`5`
         features associated with edge :math:`e_i` of the input mesh
         :math:`\mathcal{m} = (V, F)`. The 5 components of :math:`x^{(1)}_i`
         are:
 
-        1. The dihedral angle of the two faces incident to edge :math:`e_i`.
+        1. **Dihedral Angle** :math:`\eta`: The angle between
+        the two faces incident to edge :math:`e_i`.
 
-        2. The minimum of `Inner Angle 1` and
-        `Inner Angle 2` , where
-        `Inner Angle 1` represents the angle formed
-        by the two other edges of face 1.
+        2. **Min Face Angle**:
+        :math:`\min(\alpha, \beta)`.
 
-        3. The maximum of `Inner Angle 1` and `Inner Angle 2`.
+        3. **Max Face Angle**:
+        :math:`\max(\alpha, \beta)`.
 
-        4. The minimum of `Edge Ratio 1` and `Edge Ratio 2`, where
-        `Edge Ratio 1` is the ratio
-        between the edge and the line perpendicular
-        to the edge from the opposite
-        vertex of face 1.
+        4. **Min Edge Ratio**:
+        :math:`\min(\frac{|\overline{OC}|}{|\overline{AB}|},
+        \frac{|\overline{OD}|}{|\overline{AB}|})`
+        where :math:`O` is midpoint of edge :math:`e_i`
+        aka :math:`\overline{AB}`.
 
-        5. The maximum of `Edge Ratio 1` and `Edge Ratio 2`.
+        5. **Max Edge Ratio**:
+        :math:`\max(\frac{|\overline{OC}|}{|\overline{AB}|},
+        \frac{|\overline{OD}|}{|\overline{AB}|})`
+        where :math:`C,D` are opposite vertices.
 
         Please see *Figure 1* for an illustration.
 
@@ -94,17 +115,24 @@ class MeshCNN(torch.nn.Module):
             Then :math:`x_i^{(1)} = \bigl(\eta,
             \text{Min}(\alpha, \beta),
             \text{Max}(\alpha, \beta),
-            \text{Min}(\frac{\overline{OC}}{\overline{AB}}),
-            \text{Max}(\frac{\overline{OD}}{\overline{AB}}) \bigr)`.
+            \text{Min}(\frac{\overline{OC}}{\overline{AB}},
+            \frac{\overline{OD}}{\overline{AB}}),
+            \text{Max}(\frac{\overline{OC}}{\overline{AB}},
+            \frac{\overline{OD}}{\overline{AB}})`.
             That is to say, for every edge :math:`\overline{AB}`
             in the triangular mesh, this layer (the first layer of MeshCNN)
             computes 1. its dihedral angle :math:`\eta`,
-            2. its minimal face angle, :math:`\text{Min}(\alpha, \beta)`,
-            3. its maximal face angle, :math:`\text{Max}(\alpha, \beta)`,
+            2. its minimal face pair angle, :math:`\text{Min}(\alpha, \beta)`,
+            3. its maximal face pair angle, :math:`\text{Max}(\alpha, \beta)`,
             4. its minmal edge ratio
-            :math:`\text{Min}(\frac{\overline{OC}}{\overline{AB}})`, and
+            :math:`\text{Min}(\frac{\overline{OC}}{\overline{AB}},
+            \frac{\overline{OD}}{\overline{AB}})`, and
             5. its maximal edge ratio
-            :math:`\text{Max}(\frac{\overline{OD}}{\overline{AB}})`.
+            :math:`\text{Max}(\frac{\overline{OC}}{\overline{AB}},
+            \frac{\overline{OD}}{\overline{AB}})`.
+
+
+        **Edge Adjacency Matrix:**
 
         We now give the definition for the *edge adjacency matrix*
         :math:`A` of the given input mesh :math:`\mathcal{m}`. We complete
@@ -202,6 +230,12 @@ class MeshCNN(torch.nn.Module):
             classes for modules in torch_geometric.nn.models.* but does
             not work for classes inside a class.
 
+        .. seealso::
+            - :meth:`edge_adjacency`: Computes the edge adjacency matrix.
+            - :meth:`edge_features`: Computes the 5-dimensional geometric
+              features for each edge.
+            - :meth:`forward`: Main entry point that combines both operations.
+
         .. currentmodule:: torch_geometric.nn.models.meshcnn.MeshCNN
         .. automethod:: FeatureExtractionLayer.forward
 
@@ -251,35 +285,34 @@ class MeshCNN(torch.nn.Module):
                         which is
                         also known as is the *edge adjacency matrix*.
 
-            .. Example::
-
-                import torch
-                from torch_geometric.data import Data
-                from torch_geometric.nn.models import MeshCNN
-                # tetrahedral mesh
-                # pos.shape=(num_vertices, 3)=(4, 3)
-                pos = torch.tensor([[0., 0., 0.], [1., 1., 0.],
-                                    [1., 0., 1.], [0., 1., 1.]])
-                # face.shape=(3, num_faces)=(3, 4)
-                face = torch.tensor([[0, 3, 0, 3], [1, 1, 2, 2],
-                                                    [2, 0, 3, 1]])
-                data = Data(pos = pos, face = face)
-                meshcnn_layer_1 = MeshCNN.FeatureExtractionLayer()
-                data = meshcnn_layer1.forward(data)
-                print(data)
-                >>> Data(x=[6, 5], edge_index=[2, 24])
-                print(f"X^(1) = {data.x}")
-                >>> X^(1) = tensor([[1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
-                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
-                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
-                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
-                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
-                ...   [1.9106, 1.0472, 1.0472, 0.8660, 0.8660]])
-                print(f"A = {data.edge_index}")
-                >>> A = tensor([[ 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
-                ... 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5 ],
-                ...     [3, 1, 2, 4, 0, 3, 5, 2, 4, 0, 1, 5, 1, 0,
-                ... 4, 5, 0, 2, 5, 3, 2, 1, 3, 4 ]])
+            Example:
+                >>> import torch
+                >>> from torch_geometric.data import Data
+                >>> from torch_geometric.nn.models import MeshCNN
+                >>> # tetrahedral mesh
+                >>> # pos.shape=(num_vertices, 3)=(4, 3)
+                >>> pos = torch.tensor([[0., 0., 0.], [1., 1., 0.],
+                ...                    [1., 0., 1.], [0., 1., 1.]])
+                >>> # face.shape=(3, num_faces)=(3, 4)
+                >>> face = torch.tensor([[0, 3, 0, 3], [1, 1, 2, 2],
+                ...                                    [2, 0, 3, 1]])
+                >>> data = Data(pos = pos, face = face)
+                >>> meshcnn_layer_1 = MeshCNN.FeatureExtractionLayer()
+                >>> data = meshcnn_layer1.forward(data)
+                >>> print(data)
+                Data(x=[6, 5], edge_index=[2, 24])
+                >>> print(f"X^(1) = {data.x}")
+                X^(1) = tensor([[1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                    [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                    [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                    [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                    [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                    [1.9106, 1.0472, 1.0472, 0.8660, 0.8660]])
+                >>> print(f"A = {data.edge_index}")
+                A = tensor([[ 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
+                    2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5 ],
+                        [3, 1, 2, 4, 0, 3, 5, 2, 4, 0, 1, 5, 1, 0,
+                    4, 5, 0, 2, 5, 3, 2, 1, 3, 4 ]])
             """
             pos, face = self._assert_mesh(data)
             edges, edge_adjacency, _ = self.edge_adjacency(face)
