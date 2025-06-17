@@ -56,7 +56,7 @@ class MeshCNN(torch.nn.Module):
           `MeshCNN <https://arxiv.org/abs/1809.05910>`_.
 
         2. **Edge Adjacency Matrix** :math:`A \in
-        \{0, ..., |E| - 1\}^{2 \times 4*|E|}`:
+        \{0, ..., |E| - 1\}^{2 \times 4|E|}`:
           TODO:
 
         We can write this layer as
@@ -69,7 +69,7 @@ class MeshCNN(torch.nn.Module):
               \times \{0,...,|E|-1|\}^{3 \times |F|}`
             - Output:
               :math:`X^{(1)} \in \mathbb{R}^{|E| \times 5}`,
-              :math:`A \in \{0, ..., |E| - 1\}^{2 \times 4*|E|}`.
+              :math:`A \in \{0, ..., |E| - 1\}^{2 \times 4|E|}`.
 
         We now precisely define the *edge feature matrix*
         :math:`X^{(1)} \in \mathbb{R}^{|E| \times 3}` and the
@@ -135,11 +135,74 @@ class MeshCNN(torch.nn.Module):
         **Edge Adjacency Matrix:**
 
         We now give the definition for the *edge adjacency matrix*
-        :math:`A` of the given input mesh :math:`\mathcal{m}`. We complete
-        :math:`A` 's definition by explicitly defining
-        what it means for two edges to be adjacent in :math:`\mathcal{m}`
-        along with defining
-        the ordering we impose on  :math:`A`.
+        :math:`A` of the given input mesh :math:`\mathcal{m}`.
+        Please see *figure 2* for further illustration of the definition.
+
+        An **incident face** to an edge is a triangular
+        face that contains that edge
+        as one of its three sides.
+        Each edge can have 1 or 2 incident faces.
+
+        For each edge :math:`e_i` in the mesh, we define its adjacency
+        as
+        :math:`\mathcal{N}(i) = (a(i), b(i), c(i), d(i))` where:
+
+        - :math:`a(i)`: First counter-clockwise edge of face 1
+        - :math:`b(i)`: Second counter-clockwise edge of face 1
+        - :math:`c(i)`: First counter-clockwise edge of face 2
+        - :math:`d(i)`: Second counter-clockwise edge of face 2
+
+        .. figure:: ../_figures/meshcnn_edge_adjacency.svg
+            :align: center
+            :width: 75%
+
+            **Figure 2:** The adjacent edges of :math:`\mathbf{e_1}`
+            are :math:`\mathbf{e_2}, \mathbf{e_3}, \mathbf{e_4}` and
+            :math:`\mathbf{e_5}`, respectively.
+            We write this as
+            :math:`\mathcal{N}(1) = (a(1), b(1), c(1), d(1)) = (2, 3, 4, 5)`.
+            As another example,
+            :math:`\mathcal{N}(9) = (a(9), b(9), c(9), d(9)) = (10, 7, 5, 6)`.
+            For boundary edges, such as :math:`\mathbf{e_{10}}`, we follow
+            `MeshCNN's convention`_ and set the c edge to the a edge, and
+            the d edge to the b edge. That is, we set :math:`c(i) = a(i)` and
+            :math:`b(i) = d(i)`. For instance, :math:`\mathbf{e_{10}}`
+            is a boundary edge, only being physically adjacent to edge
+            :math:`a(10) = \mathbf{e_7}` and :math:`b(10) = \mathbf{e_9}`,
+            respectively. So we set :math:`c(10) = a(10) = 7`, and
+            :math:`d(10) = b(10)= 9`. In summary, the adjacent edges of
+            edge :math:`\mathbf{e}_{10}` are
+            :math:`\mathbf{e_7}, \mathbf{e_9}, \mathbf{e_7}, \mathbf{e_9}`,
+            respectively. We write this as
+            :math:`\mathcal{N}(10) = (7, 9, 7, 9)`.
+
+        **Boundary vs Interior Edges:**
+
+        - **Interior edges**: Incident to exactly 2 faces
+            (face 1 ≠ face 2), have 4 unique adjacent edges.
+        - **Boundary edges**: Incident to only 1 face (face 1 = face 2),
+            have 2 adjacent edges :math:`a(i)` and :math:`b(i)`.
+            Therefore, set we :math:`c(i)=a(i)` and :math:`b(i)=d(i)`, which is
+            what `MeshCNN's convention` did as well.
+
+        **Output Format:**
+
+        The edge adjacency matrix :math:`A` has shape :math:`(2, 4|E|)`
+        with the following column ordering:
+
+        .. math::
+            A[:, 4i:(4i+4)] = \begin{bmatrix}
+            i & i & i & i \\
+            a(i) & b(i) & c(i) & d(i)
+            \end{bmatrix}
+
+        This creates 4 directed edges per mesh edge:
+        :math:`(i \to a(i)), (i \to b(i)), (i \to c(i)), (i \to d(i))`.
+
+        Therefore, we say that
+
+            edge :math:`j` is adjacent to edge :math:`i`
+            iff :math:`j \in \mathcal{N}(i)`.
 
         The :math:`j` th column of :math:`A` returns a pair of indices
         :math:`k,l \in \{0,...,|E|-1\}`, which means that edge
@@ -167,17 +230,6 @@ class MeshCNN(torch.nn.Module):
         4. :math:`d(i)` denotes the index of the *second*
         counter-clockwise edge of the face *below* :math:`e_i`.
 
-        .. figure:: ../_figures/meshcnn_edge_adjacency.svg
-            :align: center
-            :width: 60%
-
-            **Figure 2:** The neighbors of edge :math:`\mathbf{e_1}`
-            are :math:`\mathbf{e_2}, \mathbf{e_3}, \mathbf{e_4}` and
-            :math:`\mathbf{e_5}`, respectively.
-            We write this as
-            :math:`\mathcal{N}(1) = (a(1), b(1), c(1), d(1)) = (2, 3, 4, 5)`.
-            As another example,
-            :math:`\mathcal{N}(9) = (a(9), b(9), c(9), d(9)) = (10, 7, 5, 6)`.
 
         Because of this ordering constrait, :obj:`FeatureExtractionLayer`
         returns :math:`A` with *the following ordering*:
@@ -212,6 +264,35 @@ class MeshCNN(torch.nn.Module):
             A[:, 4*i + 2] &= (i, c(i)) \\
             A[:, 4*i + 3] &= (i, d(i))
 
+
+        Example:
+            >>> import torch
+            >>> from torch_geometric.data import Data
+            >>> from torch_geometric.nn.models import MeshCNN
+            >>> # tetrahedral mesh
+            >>> # pos.shape=(num_vertices, 3)=(4, 3)
+            >>> pos = torch.tensor([[0., 0., 0.], [1., 1., 0.],
+            ...                    [1., 0., 1.], [0., 1., 1.]])
+            >>> # face.shape=(3, num_faces)=(3, 4)
+            >>> face = torch.tensor([[0, 3, 0, 3], [1, 1, 2, 2],
+            ...                                    [2, 0, 3, 1]])
+            >>> data = Data(pos = pos, face = face)
+            >>> meshcnn_layer_1 = MeshCNN.FeatureExtractionLayer()
+            >>> data = meshcnn_layer1.forward(data)
+            >>> print(data)
+            Data(x=[6, 5], edge_index=[2, 24])
+            >>> print(f"X^(1) = {data.x}")
+            X^(1) = tensor([[1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                [1.9106, 1.0472, 1.0472, 0.8660, 0.8660],
+                [1.9106, 1.0472, 1.0472, 0.8660, 0.8660]])
+            >>> print(f"A = {data.edge_index}")
+            A = tensor([[ 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
+                2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5 ],
+                    [3, 1, 2, 4, 0, 3, 5, 2, 4, 0, 1, 5, 1, 0,
+                4, 5, 0, 2, 5, 3, 2, 1, 3, 4 ]])
         ..
             FIXME:
             We use the 2 below directives
@@ -234,10 +315,13 @@ class MeshCNN(torch.nn.Module):
             - :meth:`edge_adjacency`: Computes the edge adjacency matrix.
             - :meth:`edge_features`: Computes the 5-dimensional geometric
               features for each edge.
-            - :meth:`forward`: Main entry point that combines both operations.
+            - :meth:`FeatureExtractionLayer.forward`:
+              Main entry point that combines both operations.
 
         .. currentmodule:: torch_geometric.nn.models.meshcnn.MeshCNN
         .. automethod:: FeatureExtractionLayer.forward
+
+        .. _MeshCNN's convention: https://github.com/ranahanocka/MeshCNN/blob/5bf0b899d48eb204b9b73bc1af381be20f4d7df1/models/layers/mesh_prepare.py#L384> # noqa: E501
 
         """
         def __init__(self) -> None:
@@ -351,7 +435,8 @@ class MeshCNN(torch.nn.Module):
             as one of its three sides.
             Each edge can have 1 or 2 incident faces.
 
-            For each edge :math:`e_i` in the mesh, we define its neighborhood
+            For each edge :math:`e_i` in the mesh, we define its adjacency
+            as
             :math:`\mathcal{N}(i) = (a(i), b(i), c(i), d(i))` where:
 
             - :math:`a(i)`: First counter-clockwise edge of face 1
@@ -361,12 +446,13 @@ class MeshCNN(torch.nn.Module):
 
             **Boundary vs Interior Edges:**
 
-            - **Interior edges**: Adjacent to exactly 2 faces
-              (face 1 ≠ face 2), have 4 unique neighboring edges
-            - **Boundary edges**: Adjacent to only 1 face (face 1 = face 2),
-              have 2 neighboring edges which are
+            - **Interior edges**: Incident to exactly 2 faces
+              (face 1 ≠ face 2), have 4 unique adjacent edges.
+            - **Boundary edges**: Incident to only 1 face (face 1 = face 2),
+              have 2 adjacent edges which are
               duplicated in the adjacency matrix following
-              MeshCNN's convention: :math:`c(i) = a(i)`, :math:`d(i) = b(i)`.
+              `MeshCNN's convention`_:
+              :math:`c(i) = a(i)`, :math:`d(i) = b(i)`.
 
             ..
                 Recall that MeshCNN acts on meshes of the form
