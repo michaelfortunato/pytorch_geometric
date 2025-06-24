@@ -191,50 +191,6 @@ class MeshCNN(torch.nn.Module):
         with the following column ordering:
 
         .. math::
-            A[:, 4i:(4i+4)] = \begin{bmatrix}
-            i & i & i & i \\
-            a(i) & b(i) & c(i) & d(i)
-            \end{bmatrix}
-
-        This creates 4 directed edges per mesh edge:
-        :math:`(i \to a(i)), (i \to b(i)), (i \to c(i)), (i \to d(i))`.
-
-        Therefore, we say that
-
-            edge :math:`j` is adjacent to edge :math:`i`
-            iff :math:`j \in \mathcal{N}(i)`.
-
-        The :math:`j` th column of :math:`A` returns a pair of indices
-        :math:`k,l \in \{0,...,|E|-1\}`, which means that edge
-        :math:`e_k` is adjacent to edge :math:`e_l`
-        in our input mesh :math:`\mathcal{m}`.
-        The definition of edge adjacency in a triangular
-        mesh is illustrated in Figure 2.
-        In a triangular
-        mesh, each edge :math:`e_i` is expected to be adjacent to
-        exactly :math:`4`
-        neighboring edges, hence the number of columns of
-        :math:`A`: :math:`4*|E|`.
-        We write *the neighborhood* of edge :math:`e_i` as
-        :math:`\mathcal{N}(i) = (a(i), b(i), c(i), d(i))` where
-
-        1. :math:`a(i)` denotes the index of the *first* counter-clockwise
-        edge of the face *above* :math:`e_i`.
-
-        2. :math:`b(i)` denotes the index of the *second* counter-clockwise
-        edge of the face *above* :math:`e_i`.
-
-        3. :math:`c(i)` denotes the index of the *first* counter-clockwise edge
-        of the face *below* :math:`e_i`.
-
-        4. :math:`d(i)` denotes the index of the *second*
-        counter-clockwise edge of the face *below* :math:`e_i`.
-
-
-        Because of this ordering constrait, :obj:`FeatureExtractionLayer`
-        returns :math:`A` with *the following ordering*:
-
-        .. math::
             &A[:,0] = (0, \text{The index of the "a" edge for edge } 0) \\
             &A[:,1] = (0, \text{The index of the "b" edge for edge } 0) \\
             &A[:,2] = (0, \text{The index of the "c" edge for edge } 0) \\
@@ -253,16 +209,71 @@ class MeshCNN(torch.nn.Module):
                 \bigl(|E|-1,
                     d\bigl(|E|-1\bigr)\bigr)
 
+        ..
+            Therefore, we say that
 
-        Stated a bit more compactly, for every edge :math:`e_i` in the
-        input mesh,
-        :math:`A`, should have the following entries
+                edge :math:`j` is adjacent to edge :math:`i`
+                iff :math:`j \in \mathcal{N}(i)`.
 
-        .. math::
-            A[:, 4*i] &= (i, a(i)) \\
-            A[:, 4*i + 1] &= (i, b(i)) \\
-            A[:, 4*i + 2] &= (i, c(i)) \\
-            A[:, 4*i + 3] &= (i, d(i))
+            The :math:`j` th column of :math:`A` returns a pair of indices
+            :math:`k,l \in \{0,...,|E|-1\}`, which means that edge
+            :math:`e_k` is adjacent to edge :math:`e_l`
+            in our input mesh :math:`\mathcal{m}`.
+            The definition of edge adjacency in a triangular
+            mesh is illustrated in Figure 2.
+            In a triangular
+            mesh, each edge :math:`e_i` is expected to be adjacent to
+            exactly :math:`4`
+            neighboring edges, hence the number of columns of
+            :math:`A`: :math:`4*|E|`.
+            We write *the neighborhood* of edge :math:`e_i` as
+            :math:`\mathcal{N}(i) = (a(i), b(i), c(i), d(i))` where
+
+            1. :math:`a(i)` denotes the index of the *first* counter-clockwise
+            edge of the face *above* :math:`e_i`.
+
+            2. :math:`b(i)` denotes the index of the *second* counter-clockwise
+            edge of the face *above* :math:`e_i`.
+
+            3. :math:`c(i)` denotes the index of the *first* counter-clockwise
+            edge of the face *below* :math:`e_i`.
+
+            4. :math:`d(i)` denotes the index of the *second*
+            counter-clockwise edge of the face *below* :math:`e_i`.
+
+
+            Because of this ordering constrait, :obj:`FeatureExtractionLayer`
+            returns :math:`A` with *the following ordering*:
+
+            .. math::
+                &A[:,0] = (0, \text{The index of the "a" edge for edge } 0) \\
+                &A[:,1] = (0, \text{The index of the "b" edge for edge } 0) \\
+                &A[:,2] = (0, \text{The index of the "c" edge for edge } 0) \\
+                &A[:,3] = (0, \text{The index of the "d" edge for edge } 0) \\
+                \vdots \\
+                &A[:,4*|E|-4] =
+                    \bigl(|E|-1,
+                        a\bigl(|E|-1\bigr)\bigr) \\
+                &A[:,4*|E|-3] =
+                    \bigl(|E|-1,
+                        b\bigl(|E|-1\bigr)\bigr) \\
+                &A[:,4*|E|-2] =
+                    \bigl(|E|-1,
+                        c\bigl(|E|-1\bigr)\bigr) \\
+                &A[:,4*|E|-1] =
+                    \bigl(|E|-1,
+                        d\bigl(|E|-1\bigr)\bigr)
+
+
+            Stated a bit more compactly, for every edge :math:`e_i` in the
+            input mesh,
+            :math:`A`, should have the following entries
+
+            .. math::
+                A[:, 4*i] &= (i, a(i)) \\
+                A[:, 4*i + 1] &= (i, b(i)) \\
+                A[:, 4*i + 2] &= (i, c(i)) \\
+                A[:, 4*i + 3] &= (i, d(i))
 
 
         Example:
@@ -333,7 +344,7 @@ class MeshCNN(torch.nn.Module):
             .. ATTENTION::
                 :obj:`face` MUST have consistent winding. See
                 `here <https://trimesh.org/trimesh.base.html
-                #trimesh.base.Trimesh.is_winding_consistent>`__) to learn
+                #trimesh.base.Trimesh.is_winding_consistent>`__ to learn
                 what winding is. Fortunately, most programs such as Blender
                 and trimesh ensure that their triangular meshes
                 (a.k.a. the faces of the triangular meshes) have
@@ -369,15 +380,53 @@ class MeshCNN(torch.nn.Module):
                         which is
                         also known as is the *edge adjacency matrix*.
 
+                        .. math::
+                            &A[:,0] =
+                            (0,
+                            \text{The index of the "a" edge for edge } 0) \\
+                            &A[:,1] =
+                            (0,
+                            \text{The index of the "b" edge for edge } 0) \\
+                            &A[:,2] =
+                            (0,
+                            \text{The index of the "c" edge for edge } 0) \\
+                            &A[:,3] =
+                            (0,
+                            \text{The index of the "d" edge for edge } 0) \\
+                            \vdots \\
+                            &A[:,4*|E|-4] =
+                                \bigl(|E|-1,
+                                    a\bigl(|E|-1\bigr)\bigr) \\
+                            &A[:,4*|E|-3] =
+                                \bigl(|E|-1,
+                                    b\bigl(|E|-1\bigr)\bigr) \\
+                            &A[:,4*|E|-2] =
+                                \bigl(|E|-1,
+                                    c\bigl(|E|-1\bigr)\bigr) \\
+                            &A[:,4*|E|-1] =
+                                \bigl(|E|-1,
+                                    d\bigl(|E|-1\bigr)\bigr)
+
+
+                        Stated a bit more compactly, for every edge
+                        :math:`e_i` in the input mesh,
+                        :math:`A`, should have the following entries
+
+                        .. math::
+                            A[:, 4*i] &= (i, a(i)) \\
+                            A[:, 4*i + 1] &= (i, b(i)) \\
+                            A[:, 4*i + 2] &= (i, c(i)) \\
+                            A[:, 4*i + 3] &= (i, d(i))
+
             Example:
                 >>> import torch
                 >>> from torch_geometric.data import Data
                 >>> from torch_geometric.nn.models import MeshCNN
                 >>> # tetrahedral mesh
-                >>> # pos.shape=(num_vertices, 3)=(4, 3)
+                >>> # pos.shape = (num_vertices, 3) = (4, 3)
                 >>> pos = torch.tensor([[0., 0., 0.], [1., 1., 0.],
                 ...                    [1., 0., 1.], [0., 1., 1.]])
-                >>> # face.shape=(3, num_faces)=(3, 4)
+                >>> # face.shape = (3, num_faces) = (3, 4)
                 >>> face = torch.tensor([[0, 3, 0, 3], [1, 1, 2, 2],
                 ...                                    [2, 0, 3, 1]])
                 >>> data = Data(pos = pos, face = face)
@@ -454,6 +503,35 @@ class MeshCNN(torch.nn.Module):
               `MeshCNN's convention`_:
               :math:`c(i) = a(i)`, :math:`d(i) = b(i)`.
 
+            Please see *Figure 3* for the visual definition of edge adjacency.
+
+            .. figure:: ../_figures/meshcnn_edge_adjacency.svg
+                :align: center
+                :width: 75%
+
+                **Figure 3:** The adjacent edges of :math:`\mathbf{e_1}`
+                are :math:`\mathbf{e_2}, \mathbf{e_3}, \mathbf{e_4}` and
+                :math:`\mathbf{e_5}`, respectively.
+                We write this as
+                :math:`\mathcal{N}(1)
+                = (a(1), b(1), c(1), d(1)) = (2, 3, 4, 5)`.
+                As another example,
+                :math:`\mathcal{N}(9)
+                = (a(9), b(9), c(9), d(9)) = (10, 7, 5, 6)`.
+                For boundary edges, such as :math:`\mathbf{e_{10}}`, we follow
+                `MeshCNN's convention`_ and set the c edge to the a edge, and
+                the d edge to the b edge. That is,
+                we set :math:`c(i) = a(i)` and
+                :math:`b(i) = d(i)`. For instance, :math:`\mathbf{e_{10}}`
+                is a boundary edge, only being physically adjacent to edge
+                :math:`a(10) = \mathbf{e_7}` and :math:`b(10) = \mathbf{e_9}`,
+                respectively. So we set :math:`c(10) = a(10) = 7`, and
+                :math:`d(10) = b(10)= 9`. In summary, the adjacent edges of
+                edge :math:`\mathbf{e}_{10}` are
+                :math:`\mathbf{e_7}, \mathbf{e_9}, \mathbf{e_7}, \mathbf{e_9}`,
+                respectively. We write this as
+                :math:`\mathcal{N}(10) = (7, 9, 7, 9)`.
+
             ..
                 Recall that MeshCNN acts on meshes of the form
                 :math:`\mathcal{m} = (V, F)`. Here,
@@ -503,13 +581,16 @@ class MeshCNN(torch.nn.Module):
                 :obj:`(|E|, 4)`.
                 This tensor represents the edge adjacencies of the input mesh
                 :math:`\mathcal{m} = (V, F)` whose face :math:`F` is given by
-                :obj:`face`.
+                :obj:`face`. In particular,
+                :obj:`edge_adjacency[i] = [a(i), b(i), c(i), d(i)]`.
+                Note that if edge :obj:`i` is a boundary edge, then
+                :obj:`c(i) = a(i)` and :obj:`d(i) = b(i)`.
 
                 3. :obj:`_interior_edge_mask` (torch.BoolTensor).
-                Shape: :obj:`(|E|, 1)`. This is output is usually ignored
+                Shape: :obj:`(|E|, 1)`. This is output is usually ignored,
                 but we return it because it might be useful for debugging.
-                :obj:`_interior_edge_mask[i] = True` if edge i is an interior
-                edge, that is if edge i is adjacent to four unique edges.
+                :obj:`_interior_edge_mask[i] = True` if edge i is an *interior
+                edge*, that is, if edge i is adjacent to four unique edges.
                 This can also be checked in code by seeing if
                 :obj:`edge_adjacency[i, 0] != edge_adjacency[i, 2]`.
 
@@ -649,7 +730,22 @@ class MeshCNN(torch.nn.Module):
             edges: Tensor,
             edge_adjacency: Tensor,
         ) -> Tensor:
-            r"""Computes the edge features."""
+            r"""Computes the edge features.
+
+            Args:
+                pos (torch.Tensor): Shape: :obj:`(|V|, 3)`.
+                edges (torch.Tensor): Shape: :obj:`(2, |E|)`.
+                edge_adjacency (torch.Tensor): Shape: :obj:`(|E|, 4)`.
+
+            Returns:
+                torch.Tensor: Shape: :obj:`(|E|, 5)`.
+                A :obj:`(|E|, 5)` tensor.
+
+            """
+            # The variable names used in this function refer to
+            # this below diagram: the incident face pair--the core feature
+            # element MeshCNN. For instance `edge_AC_ids`, refers
+            # to the ids of edge a's.
             #        C
             #       /|\
             #      / | \
